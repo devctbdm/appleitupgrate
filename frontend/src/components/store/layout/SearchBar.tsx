@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Search, X, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import api from '@/lib/axios';
+import api from '@/lib/http';
 import type { RawProduct } from '@/lib/productMapper';
 
 interface SearchBarProps {

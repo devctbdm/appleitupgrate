@@ -1,11 +1,9 @@
 // src/lib/serverApi.ts
 // Server-only data fetching helpers (used by server components / metadata).
 import { cache } from 'react';
+import { getApiBase } from './apiConfig';
 
-const API_BASE =
-  process.env.API_BASE_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  'http://localhost:5000/api';
+const API_BASE = getApiBase();
 
 export const fetchProductBySlug = cache(async (slug: string) => {
   try {
@@ -37,6 +35,34 @@ export const fetchAllProducts = cache(async () => {
     if (!res.ok) return [];
     const data = await res.json();
     return data.products || [];
+  } catch {
+    return [];
+  }
+});
+
+// Banner setting + active count for the home page banner (single request).
+export const fetchPhysicalStoreBanner = cache(async () => {
+  try {
+    const res = await fetch(`${API_BASE}/physical-stores/setting`, {
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.success ? data.setting : null;
+  } catch {
+    return null;
+  }
+});
+
+// Active physical stores for the /physical-stores page.
+export const fetchPhysicalStores = cache(async () => {
+  try {
+    const res = await fetch(`${API_BASE}/physical-stores?active=true`, {
+      cache: 'no-store',
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.stores || [];
   } catch {
     return [];
   }

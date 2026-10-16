@@ -1,9 +1,7 @@
 import type { MetadataRoute } from 'next';
+import { getApiBase } from '@/lib/apiConfig';
 
-const API_BASE =
-  process.env.API_BASE_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  'http://localhost:5000/api';
+const API_BASE = getApiBase();
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://appleitzone.com';
 

@@ -1,18 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Plus, ArrowLeft, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { toast } from 'sonner';
-import { categoryApi, productApi } from '@/lib/api';
-import { SiteHeader } from '@/components/site-header';
 import {
-  ProductForm,
   EMPTY_FORM_VALUE,
+  ProductForm,
   ProductFormValue,
 } from '@/components/admin/products/ProductForm';
+import { SiteHeader } from '@/components/site-header';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { categoryApi, productApi } from '@/lib/api';
+import { ArrowLeft, Loader2, Plus } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 
 export default function NewProductPage() {
   const router = useRouter();
@@ -107,8 +107,7 @@ export default function NewProductPage() {
         });
       });
       fd.append('specifications', JSON.stringify(specs));
-      if (form.content.length > 0)
-        fd.append('content', JSON.stringify(form.content));
+      if (form.content) fd.append('content', form.content);
       fd.append('pcPart', JSON.stringify(form.pcPart));
 
       imageFiles.forEach((file) => fd.append('images', file));
@@ -151,6 +150,7 @@ export default function NewProductPage() {
               categories={categories}
               imageFiles={imageFiles}
               onImageFilesChange={setImageFiles}
+              enableAutoGenerate
             />
             <div className="flex justify-end gap-3 mt-6 pt-6 border-t">
               <Button variant="outline" onClick={() => router.back()}>

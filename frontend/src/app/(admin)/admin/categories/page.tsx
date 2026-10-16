@@ -57,6 +57,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import Image from 'next/image';
+import Link from 'next/link';
 import { categoryApi, type Category, type CategoryForm } from '@/lib/api';
 import { SiteHeader } from '@/components/site-header';
 
@@ -590,9 +591,17 @@ export default function CategoriesPage() {
             section.
           </p>
         </div>
-        <Button onClick={() => openCreate(null)}>
-          <Plus className="mr-2 h-4 w-4" /> New Root Category
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={() => openCreate(null)}>
+            <Plus className="mr-2 h-4 w-4" /> Quick add
+          </Button>
+          <Button
+            nativeButton={false}
+            render={<Link href="/admin/categories/new" />}
+          >
+            <Plus className="mr-2 h-4 w-4" /> New Root Category
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">

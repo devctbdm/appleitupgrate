@@ -18,7 +18,7 @@ export type RawProduct = {
   status: string;
   featured: boolean;
   specifications: Record<string, any>;
-  content?: any[];
+  content?: string | any[];
   seo?: {
     metaTitle?: string;
     metaDescription?: string;

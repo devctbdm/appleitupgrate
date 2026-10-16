@@ -20,7 +20,7 @@ import { Label } from '@/components/ui/label';
 import { useAppStore, useAuth } from '@/store';
 import { TwoFactorStep } from '@/components/TwoFactorStep';
 import type { LoginResponse } from '@/lib/api';
-import api from '@/lib/axios';
+import api from '@/lib/http';
 
 const ADMIN_ROLES = ['super_admin', 'admin'];
 

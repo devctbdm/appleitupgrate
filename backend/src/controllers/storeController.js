@@ -27,10 +27,16 @@ export const getPublicStoreSettings = async (req, res) => {
         email: settings.email,
         phone: settings.phone,
         description: settings.description,
+        logoType: settings.logoType,
+        logoText: settings.logoText,
+        logoSubText: settings.logoSubText,
+        logoIconUrl: settings.logoIconUrl,
         logoUrl: settings.logoUrl,
         currency: settings.currency,
         timezone: settings.timezone,
         address: settings.address,
+        metaTitle: settings.metaTitle,
+        metaDescription: settings.metaDescription,
       },
     });
   } catch (error) {
@@ -40,7 +46,23 @@ export const getPublicStoreSettings = async (req, res) => {
 
 export const updateStoreSettings = async (req, res) => {
   try {
-    const { storeName, storeUrl, email, phone, description, logoUrl, currency, timezone, address } = req.body;
+    const {
+      storeName,
+      storeUrl,
+      email,
+      phone,
+      description,
+      logoType,
+      logoText,
+      logoSubText,
+      logoIconUrl,
+      logoUrl,
+      currency,
+      timezone,
+      address,
+      metaTitle,
+      metaDescription,
+    } = req.body;
     let settings = await StoreSetting.findOne();
     if (!settings) {
       settings = new StoreSetting();
@@ -50,10 +72,16 @@ export const updateStoreSettings = async (req, res) => {
     if (email !== undefined) settings.email = email;
     if (phone !== undefined) settings.phone = phone;
     if (description !== undefined) settings.description = description;
+    if (logoType !== undefined) settings.logoType = logoType === 'image' ? 'image' : 'text';
+    if (logoText !== undefined) settings.logoText = logoText;
+    if (logoSubText !== undefined) settings.logoSubText = logoSubText;
+    if (logoIconUrl !== undefined) settings.logoIconUrl = logoIconUrl;
     if (logoUrl !== undefined) settings.logoUrl = logoUrl;
     if (currency !== undefined) settings.currency = currency;
     if (timezone !== undefined) settings.timezone = timezone;
     if (address !== undefined) settings.address = address;
+    if (metaTitle !== undefined) settings.metaTitle = metaTitle;
+    if (metaDescription !== undefined) settings.metaDescription = metaDescription;
     await settings.save();
     res.json({ success: true, settings });
   } catch (error) {

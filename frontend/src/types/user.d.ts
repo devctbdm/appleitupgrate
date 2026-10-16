@@ -1,6 +1,7 @@
 // src/types/user.types.ts
 export interface User {
-  _id: string;
+  _id?: string;
+  id: string;          // returned by authController publicUser()
   name: string;
   email: string;
   phone: string;
@@ -12,7 +13,9 @@ export interface User {
     postcode: string;
     country: string;
   };
-  createdAt: string;
+  isTeam?: boolean;
+  active?: boolean;
+  createdAt?: string;
 }
 
 export interface AuthResponse {

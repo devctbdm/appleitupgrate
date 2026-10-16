@@ -1,11 +1,11 @@
 // src/store/slices/cart.slice.ts
 import { StateCreator } from 'zustand';
 import { CartItem } from '../types';
-import api from '@/lib/axios';
+import api from '@/lib/http';
 
 const isBrowser = () => typeof window !== 'undefined';
 
-// Matches the axios interceptor: a stored token = logged-in (server will accept the request)
+// Matches the API client auth behavior: a stored token = logged-in (server will accept the request)
 const isAuthed = () =>
   isBrowser() && !!localStorage.getItem('mobile_token');
 

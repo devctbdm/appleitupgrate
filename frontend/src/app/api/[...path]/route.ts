@@ -1,10 +1,6 @@
 // app/api/[...path]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-
-const API_BASE_URL =
-  process.env.API_BASE_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  'https://api-appleitzone-com.onrender.com/api';
+import { buildApiUrl } from '@/lib/apiConfig';
 
 export async function GET(
   request: NextRequest,
@@ -46,7 +42,7 @@ export async function PATCH(
  */
 async function proxyRequest(request: NextRequest, params: { path: string[] }) {
   const path = params.path.join('/');
-  const url = `${API_BASE_URL}/${path}`;
+  const url = buildApiUrl(`/${path}`);
 
   // Build the request headers
   const headers = new Headers(request.headers);

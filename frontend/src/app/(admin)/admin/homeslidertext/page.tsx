@@ -36,7 +36,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { SiteHeader } from '@/components/site-header';
-import { homeSliderTextApi, type HomeSliderText } from '@/lib/api';
+import { homeSliderTextApi, homeSliderSettingApi, type HomeSliderText } from '@/lib/api';
 
 const emptyForm = {
   text: '',
@@ -52,6 +52,8 @@ export default function HomeSliderTextPage() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<HomeSliderText | null>(null);
+  const [settingEnabled, setSettingEnabled] = useState(true);
+  const [settingSaving, setSettingSaving] = useState(false);
 
   const fetchTexts = useCallback(async () => {
     try {
@@ -65,9 +67,41 @@ export default function HomeSliderTextPage() {
     }
   }, []);
 
+  const fetchSetting = useCallback(async () => {
+    try {
+      const { data } = await homeSliderSettingApi.get();
+      if (data.success) setSettingEnabled(data.setting.enabled !== false);
+    } catch {
+      /* keep the default (enabled) if the request fails */
+    }
+  }, []);
+
   useEffect(() => {
     fetchTexts();
-  }, [fetchTexts]);
+    fetchSetting();
+  }, [fetchTexts, fetchSetting]);
+
+  const toggleSetting = async (next: boolean) => {
+    const previous = settingEnabled;
+    setSettingEnabled(next);
+    try {
+      setSettingSaving(true);
+      const { data } = await homeSliderSettingApi.update({ enabled: next });
+      if (data.success) setSettingEnabled(data.setting.enabled);
+      toast.success(
+        next
+          ? 'Marquee is now shown on the homepage'
+          : 'Marquee is now hidden from the homepage'
+      );
+    } catch (err: any) {
+      setSettingEnabled(previous);
+      toast.error(
+        err?.response?.data?.message || 'Failed to update visibility'
+      );
+    } finally {
+      setSettingSaving(false);
+    }
+  };
 
   const sorted = [...texts].sort((a, b) => a.sortOrder - b.sortOrder);
 
@@ -160,6 +194,35 @@ export default function HomeSliderTextPage() {
       />
 
       <div className="px-4 py-8">
+        {/* Master visibility switch for the homepage marquee */}
+        <Card className="mb-6">
+          <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted">
+                <Megaphone className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">Show on homepage</p>
+                <p className="text-sm text-muted-foreground">
+                  Turn off to hide the announcement marquee from the storefront
+                  entirely.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 sm:pl-4">
+              <span className="text-sm text-muted-foreground">
+                {settingEnabled ? 'Visible' : 'Hidden'}
+              </span>
+              <Switch
+                aria-label="Show home slide text on the homepage"
+                checked={settingEnabled}
+                disabled={settingSaving}
+                onCheckedChange={toggleSetting}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
         <div className="mb-4 flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
             These messages scroll across the top of the storefront.

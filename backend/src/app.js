@@ -26,6 +26,7 @@ import offerRoutes from "./routes/offerRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import paymentSettingsRoutes from "./routes/paymentSettingsRoutes.js";
+import physicalStoreRoutes from "./routes/physicalStoreRoutes.js";
 import pcBuilderRoutes from "./routes/pcBuilderRoutes.js";
 import popupOfferRoutes from "./routes/popupOfferRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
@@ -38,7 +39,10 @@ import smsRoutes from "./routes/smsRoutes.js";
 import storeRoutes from "./routes/storeRoutes.js";
 import teamRoutes from "./routes/teamRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
+import uploadRoutes from "./routes/uploadRoutes.js";
 import visitorRoutes from "./routes/visitorRoutes.js";
+import staffRoutes from "./routes/staffRoutes.js";
+import permissionGroupRoutes from "./routes/permissionGroupRoutes.js";
 
 // Set DNS servers to avoid DNS resolution issues
 import { setServers } from "node:dns/promises";
@@ -74,7 +78,7 @@ if (trustProxyEnv === undefined || trustProxyEnv === "") {
 }
 app.set("trust proxy", trustProxySetting);
 
-// Disable ETag so cached API responses don't come back as 304 (breaks axios validateStatus)
+// Disable ETag so cached API responses don't come back as 304 (304 is non-2xx and would be treated as an error)
 app.set("etag", false);
 
 // ------- Middlewares -------
@@ -106,7 +110,7 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// Never cache API responses (auth data must stay fresh; avoids 304 breaking axios)
+// Never cache API responses (auth data must stay fresh; avoids 304 being treated as an error)
 app.use("/api", (req, res, next) => {
   res.set("Cache-Control", "no-store");
   next();
@@ -166,6 +170,8 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/team", teamRoutes);
+app.use("/api/staff", staffRoutes);
+app.use("/api/permission-groups", permissionGroupRoutes);
 app.use("/api/store", storeRoutes);
 
 app.use("/api/reviews", reviewRoutes);
@@ -185,7 +191,9 @@ app.use("/api/offers", offerRoutes);
 app.use("/api/popup-offer", popupOfferRoutes);
 app.use("/api/holiday", holidayRoutes);
 app.use("/api/home-slider-texts", homeSliderTextRoutes);
+app.use("/api/physical-stores", physicalStoreRoutes);
 app.use("/api/home-content", homeContentRoutes);
+app.use("/api/upload", uploadRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/pc-builder", pcBuilderRoutes);
 

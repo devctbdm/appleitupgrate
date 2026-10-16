@@ -4,6 +4,26 @@ import Product from '../models/Product.js';
 import { cloudinary } from '../middleware/upload.js';
 import slugify from 'slugify';
 import { cacheGet, cacheSet, cacheDel } from '../config/redis.js';
+import { getNextProductCode } from '../utils/productCode.js';
+import { generateUniqueSku } from '../utils/sku.js';
+
+// Normalize the product "content" field. New admin forms send rich-text HTML
+// while older records used an array of content blocks. Accept both: try to
+// parse JSON (legacy block arrays) and otherwise keep the raw HTML string.
+const parseRichContent = (value) => {
+  if (value === undefined || value === null) return '';
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return value;
+    }
+  }
+  return value;
+};
 
 // Normalize the optional PC-part metadata. Accepts an object or a JSON string
 // (admin forms may send either). Returns null-ish when the product isn't a PC part.
@@ -30,6 +50,43 @@ const parsePcPart = (pcPart) => {
     wattage: Number(data.wattage) || 0,
     specs: data.specs && typeof data.specs === 'object' ? data.specs : {},
   };
+};
+
+// Detect a MongoDB duplicate-key error (code 11000) on the productCode field.
+const isProductCodeDuplicate = (error) =>
+  Boolean(
+    error &&
+      error.code === 11000 &&
+      ((error.keyPattern && error.keyPattern.productCode) ||
+        (error.keyValue && error.keyValue.productCode) ||
+        (typeof error.message === 'string' && error.message.includes('productCode')))
+  );
+
+// @desc    Auto-generate a unique product code (PC-000001, PC-000002, ...)
+// @route   POST /api/products/generate-code
+// @access  Private/Admin
+export const generateProductCode = async (req, res) => {
+  try {
+    const productCode = await getNextProductCode();
+    res.json({ success: true, productCode });
+  } catch (error) {
+    console.error('Generate Product Code Error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Auto-generate a unique SKU from the product title + category
+// @route   POST /api/products/generate-sku
+// @access  Private/Admin
+export const generateSku = async (req, res) => {
+  try {
+    const { name, category } = req.body;
+    const { sku, suffix } = await generateUniqueSku(name, category);
+    res.json({ success: true, sku, suffix });
+  } catch (error) {
+    console.error('Generate SKU Error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
 };
 
 // @desc    Get PC-builder parts (products marked as pcPart.enabled)
@@ -330,9 +387,7 @@ export const createProduct = async (req, res) => {
       specifications: specifications
         ? (typeof specifications === 'string' ? JSON.parse(specifications) : specifications)
         : {},
-      content: content
-        ? (typeof content === 'string' ? JSON.parse(content) : content)
-        : [],
+      content: parseRichContent(content),
       seo,
       pcPart: parsePcPart(pcPart),
       images: imageUrls,
@@ -346,6 +401,12 @@ export const createProduct = async (req, res) => {
     res.status(201).json({ success: true, product });
   } catch (error) {
     console.error('Create Product Error:', error);
+    if (isProductCodeDuplicate(error)) {
+      return res.status(409).json({
+        success: false,
+        message: 'This product code is already in use. Please generate a new one.',
+      });
+    }
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -438,12 +499,8 @@ export const updateProduct = async (req, res) => {
         product.specifications = specifications;
       }
     }
-    if (content) {
-      try {
-        product.content = typeof content === 'string' ? JSON.parse(content) : content;
-      } catch {
-        product.content = content;
-      }
+    if (content !== undefined) {
+      product.content = parseRichContent(content);
     }
     if (imageAlts !== undefined) {
       product.imageAlts = parseArray(imageAlts);

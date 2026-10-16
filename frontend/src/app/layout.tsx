@@ -7,6 +7,7 @@ import { ClientLayout } from './ClientLayout';
 import './globals.css';
 import { Providers } from './providers';
 import GoogleAnalytics from '@/components/GoogleAnalytics';
+import { buildApiUrl } from '@/lib/apiConfig';
 
 declare global {
   interface Window {
@@ -28,10 +29,34 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
-export const metadata: Metadata = {
-  title: appTitle,
-  description: appMainDescription,
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const fallbackTitle = appTitle;
+  const fallbackDesc = appMainDescription;
+  try {
+    const url = buildApiUrl('/store/public');
+    const res = await fetch(url, { next: { revalidate: 60 } });
+    if (res.ok) {
+      const data = await res.json();
+      const s = data?.settings || {};
+      const title = s.metaTitle || s.storeName || fallbackTitle;
+      const description = s.metaDescription || s.description || fallbackDesc;
+      return {
+        title,
+        description,
+        openGraph: {
+          title,
+          description,
+          siteName: s.storeName || fallbackTitle,
+          type: 'website',
+        },
+        twitter: { card: 'summary', title, description },
+      };
+    }
+  } catch (err) {
+    // ignore
+  }
+  return { title: fallbackTitle, description: fallbackDesc };
+}
 
 export default function RootLayout({
   children,

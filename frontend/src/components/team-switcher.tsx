@@ -1,7 +1,5 @@
 'use client';
 
-import * as React from 'react';
-
 import { DropdownMenu } from '@/components/ui/dropdown-menu';
 import {
   SidebarMenu,
@@ -20,7 +18,7 @@ export function TeamSwitcher({
     plan: string;
   }[];
 }) {
-  const [activeTeam] = React.useState(teams[0]);
+  const activeTeam = teams[0];
   return (
     <SidebarMenu>
       <SidebarMenuItem>

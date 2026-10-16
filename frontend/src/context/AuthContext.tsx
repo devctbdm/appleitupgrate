@@ -7,7 +7,7 @@ import {
   RegisterCredentials,
   AuthResponse,
 } from '@/types/user';
-import api from '@/lib/axios';
+import api from '@/lib/http';
 import { useRouter } from 'next/navigation';
 
 export interface AuthContextType {

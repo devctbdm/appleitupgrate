@@ -1,22 +1,21 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import Image from 'next/image';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
 
+import { SiteHeader } from '@/components/site-header';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import {
   Select,
   SelectContent,
@@ -25,48 +24,21 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { invalidateCurrency } from '@/hooks/useCurrency';
+import { STORE_LOGO_EVENT } from '@/hooks/useStoreLogo';
+import { authApi, smsApi, storeApi, uploadApi, type Session } from '@/lib/api';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
-  Store,
-  CreditCard,
-  Truck,
-  Bell,
-  Users,
-  ShieldCheck,
-  Save,
-  Upload,
   AlertTriangle,
+  CheckCircle2,
+  Save,
   ShieldAlert,
   ShieldBan,
+  ShieldCheck,
   Smartphone,
-  KeyRound,
-  CheckCircle2,
-  X,
-  Pencil,
-  Settings2,
-  FlaskConical,
+  Store,
 } from 'lucide-react';
-import {
-  teamApi,
-  authApi,
-  storeApi,
-  paymentSettingsApi,
-  smsApi,
-  type TeamMember,
-  type Session,
-  type PaymentGateway,
-} from '@/lib/api';
-import { toast } from 'sonner';
-import { SiteHeader } from '@/components/site-header';
 import Link from 'next/link';
+import { toast } from 'sonner';
 
 type ShippingZone = {
   id: string;
@@ -138,7 +110,19 @@ export default function SettingsPage() {
     email: '',
     phone: '',
     description: '',
+    logoType: 'text' as 'text' | 'image',
+    logoText: '',
+    logoSubText: '',
+    logoIconUrl: '',
+    logoUrl: '',
+    metaTitle: '',
+    metaDescription: '',
   });
+
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingIcon, setUploadingIcon] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const iconInputRef = useRef<HTMLInputElement>(null);
 
   const [isDirty, setIsDirty] = useState(false);
 
@@ -301,12 +285,20 @@ export default function SettingsPage() {
           email: data.settings.email || '',
           phone: data.settings.phone || '',
           description: data.settings.description || '',
+          logoType: data.settings.logoType === 'image' ? 'image' : 'text',
+          logoText: data.settings.logoText || '',
+          logoSubText: data.settings.logoSubText || '',
+          logoIconUrl: data.settings.logoIconUrl || '',
+          logoUrl: data.settings.logoUrl || '',
+          metaTitle: data.settings.metaTitle || '',
+          metaDescription: data.settings.metaDescription || '',
         });
         setBusinessDetails({
           currency: data.settings.currency || 'bdt',
           timezone: data.settings.timezone || 'gmt+6',
           address: data.settings.address || '',
         });
+        document.title = data.settings.storeName || 'Apple IT Zone';
         setIsDirty(false);
       }
     } catch {
@@ -318,10 +310,57 @@ export default function SettingsPage() {
     fetchStoreSettings();
   }, [fetchStoreSettings]);
 
+  // Uploads a logo asset and returns the Cloudinary URL (or null on failure).
+  const uploadLogoAsset = async (file: File): Promise<string | null> => {
+    try {
+      const { data } = await uploadApi.logo(file);
+      return data.success ? data.url : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleLogoUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingLogo(true);
+    const url = await uploadLogoAsset(file);
+    if (url) {
+      markDirty();
+      setProfileForm((prev) => ({ ...prev, logoType: 'image', logoUrl: url }));
+      toast.success('Logo uploaded');
+    } else {
+      toast.error('Failed to upload logo');
+    }
+    setUploadingLogo(false);
+    e.target.value = '';
+  };
+
+  const handleIconUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingIcon(true);
+    const url = await uploadLogoAsset(file);
+    if (url) {
+      markDirty();
+      setProfileForm((prev) => ({ ...prev, logoIconUrl: url }));
+      toast.success('Icon uploaded');
+    } else {
+      toast.error('Failed to upload icon');
+    }
+    setUploadingIcon(false);
+    e.target.value = '';
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
       await storeApi.update({ ...profileForm, ...businessDetails });
+      // Drop the cached currency so pages reflect a changed setting.
+      invalidateCurrency();
+      // Re-read the logo for the admin sidebar / storefront header.
+      window.dispatchEvent(new Event(STORE_LOGO_EVENT));
+      document.title = profileForm.storeName || 'Apple IT Zone';
       toast.success('Settings saved');
       setIsDirty(false);
     } catch {
@@ -336,18 +375,18 @@ export default function SettingsPage() {
       <SiteHeader />
       <div className="bg-card sticky top-0 z-30">
         <div className="flex items-center justify-between px-4">
-          <div >
-          <h2>Settings</h2>
-          <p>Manage your store preferences and configuration</p>
-        </div>
-        <Button
-          onClick={handleSave}
-          disabled={!isDirty || isSaving}
-          className="gap-2 mx-4 my-4"
-        >
-          <Save className="h-4 w-4" />
-          {isSaving ? 'Saving...' : 'Save Changes'}
-        </Button>
+          <div>
+            <h2>{profileForm.storeName || 'Settings'}</h2>
+            <p>Manage your store preferences and configuration</p>
+          </div>
+          <Button
+            onClick={handleSave}
+            disabled={!isDirty || isSaving}
+            className="gap-2 mx-4 my-4"
+          >
+            <Save className="h-4 w-4" />
+            {isSaving ? 'Saving...' : 'Save Changes'}
+          </Button>
         </div>
       </div>
 
@@ -356,7 +395,7 @@ export default function SettingsPage() {
           <TabsList className="grid w-full grid-cols-6 mb-8">
             <TabsTrigger value="profile" className="gap-2">
               <Store className="h-4 w-4" />
-              <span className="hidden sm:inline">Profile</span>
+              <span className="hidden sm:inline">General</span>
             </TabsTrigger>
 
             <TabsTrigger value="security" className="gap-2">
@@ -448,6 +487,289 @@ export default function SettingsPage() {
                       }}
                     />
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Logo</CardTitle>
+                <CardDescription>
+                  Display your brand as text, or upload a logo image
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={
+                      profileForm.logoType === 'text' ? 'default' : 'outline'
+                    }
+                    onClick={() => {
+                      markDirty();
+                      setProfileForm((prev) => ({
+                        ...prev,
+                        logoType: 'text',
+                      }));
+                    }}
+                  >
+                    Text
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={
+                      profileForm.logoType === 'image' ? 'default' : 'outline'
+                    }
+                    onClick={() => {
+                      markDirty();
+                      setProfileForm((prev) => ({
+                        ...prev,
+                        logoType: 'image',
+                      }));
+                    }}
+                  >
+                    Image
+                  </Button>
+                  <span className="ml-1 text-xs text-muted-foreground">
+                    {profileForm.logoType === 'image'
+                      ? 'Upload a logo image'
+                      : 'Use your store name as the logo'}
+                  </span>
+                </div>
+
+                {profileForm.logoType === 'text' ? (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="logoText">Logo Text</Label>
+                        <Input
+                          id="logoText"
+                          value={profileForm.logoText}
+                          placeholder={profileForm.storeName || 'Apple IT Zone'}
+                          onChange={(e) => {
+                            markDirty();
+                            setProfileForm((prev) => ({
+                              ...prev,
+                              logoText: e.target.value,
+                            }));
+                          }}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Leave empty to use your store name.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="logoSubText">
+                          Sub Logo Text{' '}
+                          <span className="font-normal text-muted-foreground">
+                            (optional)
+                          </span>
+                        </Label>
+                        <Input
+                          id="logoSubText"
+                          value={profileForm.logoSubText}
+                          placeholder="e.g. IT Zone"
+                          onChange={(e) => {
+                            markDirty();
+                            setProfileForm((prev) => ({
+                              ...prev,
+                              logoSubText: e.target.value,
+                            }));
+                          }}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Small line shown under the logo text.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <Label>
+                        Icon / Mark{' '}
+                        <span className="font-normal text-muted-foreground">
+                          (optional)
+                        </span>
+                      </Label>
+                      <div className="flex flex-wrap items-center gap-4">
+                        <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-md border bg-white p-1">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={profileForm.logoIconUrl || '/Apple.svg'}
+                            alt="Icon preview"
+                            className="max-h-14 w-auto object-contain"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={uploadingIcon}
+                            onClick={() => iconInputRef.current?.click()}
+                          >
+                            {uploadingIcon ? 'Uploading…' : 'Upload icon'}
+                          </Button>
+                          {profileForm.logoIconUrl && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              onClick={() => {
+                                markDirty();
+                                setProfileForm((prev) => ({
+                                  ...prev,
+                                  logoIconUrl: '',
+                                }));
+                              }}
+                            >
+                              Reset to default
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Defaults to the built-in mark when empty.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Preview</Label>
+                      <div className="flex h-20 items-center gap-3 rounded-md bg-slate-900 px-4">
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={profileForm.logoIconUrl || '/Apple.svg'}
+                            alt="Icon"
+                            className="h-10 w-10 object-contain"
+                          />
+                        </span>
+                        <span className="flex flex-col leading-none">
+                          <span className="text-xl font-bold tracking-tight text-white">
+                            {profileForm.logoText ||
+                              profileForm.storeName ||
+                              'Apple IT Zone'}
+                          </span>
+                          {profileForm.logoSubText && (
+                            <span className="mt-1 text-[10px] font-medium uppercase tracking-widest text-slate-400">
+                              {profileForm.logoSubText}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <Label>Logo Image</Label>
+                    <div className="flex flex-wrap items-center gap-4">
+                      <div className="flex h-16 min-w-40 items-center justify-center overflow-hidden rounded-md border bg-white px-3">
+                        {profileForm.logoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={profileForm.logoUrl}
+                            alt="Logo preview"
+                            className="max-h-14 w-auto object-contain"
+                          />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            No image uploaded
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={uploadingLogo}
+                          onClick={() => logoInputRef.current?.click()}
+                        >
+                          {uploadingLogo ? 'Uploading…' : 'Upload image'}
+                        </Button>
+                        {profileForm.logoUrl && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => {
+                              markDirty();
+                              setProfileForm((prev) => ({
+                                ...prev,
+                                logoUrl: '',
+                              }));
+                            }}
+                          >
+                            Remove
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      PNG, JPG, GIF or WebP. A wide, transparent image works
+                      best.
+                    </p>
+                  </div>
+                )}
+
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleLogoUpload}
+                />
+                <input
+                  ref={iconInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleIconUpload}
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>SEO</CardTitle>
+                <CardDescription>
+                  Global meta title and description for your store pages
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="metaTitle">Meta Title</Label>
+                  <Input
+                    id="metaTitle"
+                    value={profileForm.metaTitle}
+                    placeholder="e.g. Apple IT Zone - Best Apple Repair in Bangladesh"
+                    onChange={(e) => {
+                      markDirty();
+                      setProfileForm((prev) => ({
+                        ...prev,
+                        metaTitle: e.target.value,
+                      }));
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Leave empty to use Store Name (fallback: Apple IT Zone).
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="metaDescription">Meta Description</Label>
+                  <Textarea
+                    id="metaDescription"
+                    rows={3}
+                    value={profileForm.metaDescription}
+                    placeholder="Short description for search engines and social shares"
+                    onChange={(e) => {
+                      markDirty();
+                      setProfileForm((prev) => ({
+                        ...prev,
+                        metaDescription: e.target.value,
+                      }));
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Leave empty to use Store Description (fallback: default).
+                  </p>
                 </div>
               </CardContent>
             </Card>

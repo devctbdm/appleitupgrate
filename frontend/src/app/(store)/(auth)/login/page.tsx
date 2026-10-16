@@ -20,7 +20,7 @@ import { useAppStore, useAuth, useCart } from '@/store';
 import Link from 'next/link';
 import { TwoFactorStep } from '@/components/TwoFactorStep';
 import type { LoginResponse } from '@/lib/api';
-import api from '@/lib/axios';
+import api from '@/lib/http';
 
 const loginSchema = z.object({
   identifier: z.string().trim().min(1, 'Email or phone is required').max(255),

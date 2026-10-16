@@ -89,6 +89,32 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
+const logoStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "apple-it-zone/logo",
+    allowed_formats: ["jpg", "jpeg", "png", "gif", "webp"],
+    transformation: [{ width: 600, height: 200, crop: "limit" }],
+    public_id: (_req, _file) => {
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      return `logo-${uniqueSuffix}`;
+    },
+  },
+});
+
+const physicalStoreStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "apple-it-zone/physical-stores",
+    allowed_formats: ["jpg", "jpeg", "png", "gif", "webp"],
+    transformation: [{ width: 2000, height: 800, crop: "limit" }],
+    public_id: (_req, _file) => {
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      return `physical-store-banner-${uniqueSuffix}`;
+    },
+  },
+});
+
 const productUpload = multer({
   storage: productStorage,
   limits: { fileSize: 5 * 1024 * 1024 },
@@ -119,6 +145,18 @@ const popupOfferUpload = multer({
   fileFilter,
 });
 
+const physicalStoreUpload = multer({
+  storage: physicalStoreStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter,
+});
+
+const logoUpload = multer({
+  storage: logoStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter,
+});
+
 // ---- Middleware exports ----
 export const uploadSingle = productUpload.single("image");
 export const uploadMultiple = productUpload.array("images", 10);
@@ -129,4 +167,6 @@ export const uploadCategoryFields = categoryUpload.fields([
 export const uploadSliderImage = sliderUpload.single("image");
 export const uploadOfferImage = offerUpload.single("image");
 export const uploadPopupOfferImage = popupOfferUpload.single("image");
+export const uploadPhysicalStoreBanner = physicalStoreUpload.single("image");
+export const uploadStoreLogo = logoUpload.single("image");
 export { cloudinary };

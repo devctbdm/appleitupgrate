@@ -13,7 +13,7 @@ import { useAuth } from '@/store';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
-const ADMIN_ROLES = ['admin', 'super_admin'];
+const ADMIN_ROLES = ['admin', 'super_admin', 'manager'];
 
 // Skeleton shell shown while the session is being restored, so the admin
 // area loads with a layout-accurate placeholder instead of a spinner.

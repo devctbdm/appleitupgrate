@@ -15,7 +15,7 @@ export interface Product {
   stock: number;
   featured: boolean;
   specifications?: Record<string, any>;
-  content?: any[];
+  content?: string | any[];
   seo?: {
     metaTitle?: string;
     metaDescription?: string;

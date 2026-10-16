@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Eye,
   Pencil,
@@ -13,6 +14,7 @@ import {
   Printer,
   Clock,
   Truck,
+  PlusCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -75,75 +77,27 @@ import {
   type Order,
   type OrderStatus,
 } from '@/lib/api';
+import {
+  OrderStatusBadge,
+  PaymentStatusBadge,
+  paymentMethodLabel,
+} from '@/components/admin/orders/OrderStatusBadge';
 
 type StatusFilter = OrderStatus | 'all';
-
-const statusVariant: Record<OrderStatus, string> = {
-  pending: 'bg-amber-100 text-amber-800 hover:bg-amber-100',
-  processing: 'bg-blue-100 text-blue-800 hover:bg-blue-100',
-  confirmed: 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100',
-  send_courier: 'bg-violet-100 text-violet-800 hover:bg-violet-100',
-  cancelled: 'bg-red-100 text-red-800 hover:bg-red-100',
-};
-
-const paymentStatusVariant: Record<string, string> = {
-  paid: 'bg-green-100 text-green-800 hover:bg-green-100',
-  pending: 'bg-amber-100 text-amber-800 hover:bg-amber-100',
-  failed: 'bg-red-100 text-red-800 hover:bg-red-100',
-  cancelled: 'bg-gray-100 text-gray-800 hover:bg-gray-100',
-};
-
-const paymentStatusLabel = (s?: string) => {
-  switch (s) {
-    case 'paid':
-      return 'Paid';
-    case 'pending':
-      return 'Pending';
-    case 'failed':
-      return 'Failed';
-    case 'cancelled':
-      return 'Cancelled';
-    default:
-      return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Pending';
-  }
-};
 
 const PAGE_SIZE = 8;
 
 const shortId = (id: string) => `#${id.slice(-8).toUpperCase()}`;
-
 const orderNo = (o: Order) => o.orderNumber || shortId(o._id);
-
 const formatAmount = (n: number) => `৳${n.toLocaleString()}`;
-
 const formatDate = (d: string) =>
-  new Date(d).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-
+  new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 const getCustomer = (o: Order) => (typeof o.user === 'object' ? o.user : null);
-
 const formatAddress = (a: Order['shippingAddress']) =>
   [a.street, a.city, a.state, a.postcode, a.country].filter(Boolean).join(', ');
 
-const paymentLabel = (method: string) => {
-  switch (method) {
-    case 'cod':
-      return 'Cash on Delivery';
-    case 'bkash':
-      return 'bKash';
-    case 'nagad':
-      return 'Nagad';
-    case 'sslcommerz':
-      return 'SSLCommerz';
-    default:
-      return method;
-  }
-};
-
 export default function OrdersPage() {
+  const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -348,7 +302,7 @@ export default function OrdersPage() {
         formatDate(o.createdAt),
         o.totalAmount,
         o.orderStatus,
-        `${paymentLabel(o.payment.method)} (${paymentStatusLabel(o.payment.status)})`,
+        `${paymentMethodLabel(o.payment.method)} (${o.payment.status})`,
         formatAddress(o.shippingAddress),
         o.items
           .map(
@@ -426,7 +380,7 @@ export default function OrdersPage() {
             </div>
             <div class="box" style="text-align:right;">
               <div class="muted">Payment</div>
-              <div>${paymentLabel(order.payment.method)}</div>
+              <div>${paymentMethodLabel(order.payment.method)}</div>
               <div class="muted" style="margin-top:8px;">Status</div>
               <div style="text-transform:capitalize;">${order.orderStatus}</div>
             </div>
@@ -557,6 +511,9 @@ export default function OrdersPage() {
           >
             <Download className="mr-2 h-4 w-4" /> Export CSV
           </Button>
+          <Button onClick={() => router.push('/admin/orders/new')} className="sm:w-auto">
+            <PlusCircle className="mr-2 h-4 w-4" /> New Order
+          </Button>
         </div>
 
         <div className="rounded-md border">
@@ -598,7 +555,12 @@ export default function OrdersPage() {
                   return (
                     <TableRow key={order._id}>
                       <TableCell className="font-medium">
-                        {orderNo(order)}
+                        <button
+                          className="hover:underline text-left"
+                          onClick={() => router.push(`/admin/orders/${order._id}`)}
+                        >
+                          {orderNo(order)}
+                        </button>
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col">
@@ -612,16 +574,9 @@ export default function OrdersPage() {
                       <TableCell>{formatAmount(order.totalAmount)}</TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-1">
-                          <Badge
-                            className={
-                              paymentStatusVariant[order.payment.status] || ''
-                            }
-                            variant="secondary"
-                          >
-                            {paymentStatusLabel(order.payment.status)}
-                          </Badge>
+                          <PaymentStatusBadge status={order.payment.status} />
                           <span className="text-xs text-muted-foreground">
-                            {paymentLabel(order.payment.method)}
+                            {paymentMethodLabel(order.payment.method)}
                           </span>
                         </div>
                       </TableCell>
@@ -636,12 +591,7 @@ export default function OrdersPage() {
                         ) : null}
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          className={statusVariant[order.orderStatus]}
-                          variant="secondary"
-                        >
-                          {order.orderStatus}
-                        </Badge>
+                        <OrderStatusBadge status={order.orderStatus} />
                       </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
@@ -654,12 +604,7 @@ export default function OrdersPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               onClick={() => {
-                                setViewOrder(order);
-                                setAdvanceAmountDraft(
-                                  String(order.advanceAmount || 0)
-                                );
-                                setAdvancePaidDraft('');
-                                setAdvanceRefDraft('');
+                                router.push(`/admin/orders/${order._id}`);
                               }}
                             >
                               <Eye className="mr-2 h-4 w-4" /> View details
@@ -789,12 +734,7 @@ export default function OrdersPage() {
                   </div>
                   <div>
                     <div className="font-medium">Status</div>
-                    <Badge
-                      className={statusVariant[viewOrder.orderStatus]}
-                      variant="secondary"
-                    >
-                      {viewOrder.orderStatus}
-                    </Badge>
+                    <OrderStatusBadge status={viewOrder.orderStatus} />
                   </div>
                 </div>
                 <div>
@@ -806,16 +746,9 @@ export default function OrdersPage() {
                 <div>
                   <div className="font-medium">Payment</div>
                   <div className="text-muted-foreground">
-                    {paymentLabel(viewOrder.payment.method)}
+                    {paymentMethodLabel(viewOrder.payment.method)}
                   </div>
-                  <Badge
-                    className={
-                      paymentStatusVariant[viewOrder.payment.status] || ''
-                    }
-                    variant="secondary"
-                  >
-                    {paymentStatusLabel(viewOrder.payment.status)}
-                  </Badge>
+                  <PaymentStatusBadge status={viewOrder.payment.status} />
                   {viewOrder.payment.tran_id ? (
                     <Button
                       size="sm"

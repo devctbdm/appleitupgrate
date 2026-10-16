@@ -11,6 +11,7 @@ import {
   UserCheck,
   UserX,
   Trash2,
+  UserPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,6 +83,43 @@ const PAGE_SIZE = 8;
 export default function CustomersPage() {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "super_admin";
+  const canCreate = user?.role === "admin" || user?.role === "super_admin";
+
+  // ── Create dialog ──────────────────────────────────────────────────────────
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    password: "",
+    status: "active",
+  });
+  const [creating, setCreating] = useState(false);
+
+  const openCreateDialog = () => {
+    setCreateForm({ name: "", email: "", phone: "", password: "", status: "active" });
+    setCreateDialogOpen(true);
+  };
+
+  const handleCreateCustomer = async () => {
+    if (!createForm.name.trim() || !createForm.email.trim() || !createForm.password.trim() || !createForm.phone.trim()) {
+      toast.error("Name, email, phone, and password are required");
+      return;
+    }
+    setCreating(true);
+    try {
+      await userApi.create({ ...createForm, role: "customer" });
+      toast.success("Customer created successfully");
+      setCreateDialogOpen(false);
+      fetchCustomers();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to create customer");
+    } finally {
+      setCreating(false);
+    }
+  };
+  // ──────────────────────────────────────────────────────────────────────────
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -221,6 +259,12 @@ export default function CustomersPage() {
             <SelectItem value="suspended">Suspended</SelectItem>
           </SelectContent>
         </Select>
+        {canCreate && (
+          <Button onClick={openCreateDialog} className="shrink-0">
+            <UserPlus className="mr-2 h-4 w-4" />
+            Add Customer
+          </Button>
+        )}
       </div>
 
       <div className="rounded-md border">
@@ -442,6 +486,81 @@ export default function CustomersPage() {
               Cancel
             </Button>
             <Button onClick={handleSaveEdit}>Save changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Customer */}
+      <Dialog open={createDialogOpen} onOpenChange={(o) => { if (!o) setCreateDialogOpen(false); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Customer</DialogTitle>
+            <DialogDescription>Create a new customer account. The customer will be able to log in with the provided credentials.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="create-name">Name <span className="text-destructive">*</span></Label>
+              <Input
+                id="create-name"
+                placeholder="Full name"
+                value={createForm.name}
+                onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="create-email">Email <span className="text-destructive">*</span></Label>
+              <Input
+                id="create-email"
+                type="email"
+                placeholder="customer@example.com"
+                value={createForm.email}
+                onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="create-phone">Phone <span className="text-destructive">*</span></Label>
+              <Input
+                id="create-phone"
+                type="tel"
+                placeholder="+880..."
+                value={createForm.phone}
+                onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="create-password">Password <span className="text-destructive">*</span></Label>
+              <Input
+                id="create-password"
+                type="password"
+                placeholder="Min. 6 characters"
+                value={createForm.password}
+                onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="create-status">Status</Label>
+              <Select
+                value={createForm.status}
+                onValueChange={(v) => setCreateForm({ ...createForm, status: v ?? "active" })}
+              >
+                <SelectTrigger id="create-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="suspended">Suspended</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={creating}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateCustomer} disabled={creating}>
+              {creating ? "Creating..." : "Create Customer"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

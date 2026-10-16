@@ -11,6 +11,7 @@ export type RouteAccess = AdminRole | 'any' | 'nobody';
 export const ADMIN_ROUTE_ACCESS: Record<string, RouteAccess> = {
   '/admin/users': 'super_admin',
   '/admin/team': 'super_admin',
+  '/admin/administrator': 'super_admin',
   '/admin/payments': 'super_admin',
   '/admin/sms': 'super_admin',
   '/admin/meta': 'super_admin',

@@ -1,4 +1,4 @@
-import api from './axios';
+import api from './http';
 
 export type AuditLog = {
   _id: string;
@@ -25,6 +25,26 @@ export const auditApi = {
       total: number;
       pages: number;
     }>('/audit', { params }),
+};
+
+// Generic single-image upload (used by rich-text editors to insert images)
+export const uploadApi = {
+  image: (file: File) => {
+    const fd = new FormData();
+    fd.append('image', file);
+    return api.post<{ success: boolean; url: string; publicId?: string }>(
+      '/upload/image',
+      fd
+    );
+  },
+  logo: (file: File) => {
+    const fd = new FormData();
+    fd.append('image', file);
+    return api.post<{ success: boolean; url: string; publicId?: string }>(
+      '/upload/logo',
+      fd
+    );
+  },
 };
 
 export type Category = {
@@ -211,6 +231,124 @@ export const homeSliderTextApi = {
         orders,
       }
     ),
+};
+
+export type HomeSliderSetting = {
+  enabled: boolean;
+};
+
+export const homeSliderSettingApi = {
+  get: () =>
+    api.get<{ success: boolean; setting: HomeSliderSetting }>(
+      '/home-slider-texts/setting'
+    ),
+
+  update: (data: { enabled: boolean }) =>
+    api.put<{ success: boolean; setting: HomeSliderSetting }>(
+      '/home-slider-texts/setting',
+      data
+    ),
+};
+
+export type PhysicalStorePhone = {
+  label: string;
+  number: string;
+};
+
+export type PhysicalStore = {
+  _id: string;
+  title: string;
+  address: string;
+  description: string;
+  phones: PhysicalStorePhone[];
+  openTime: string;
+  closeTime: string;
+  offDay: string;
+  mapUrl: string;
+  active: boolean;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type PhysicalStoreForm = {
+  title: string;
+  address: string;
+  description: string;
+  phones: PhysicalStorePhone[];
+  openTime: string;
+  closeTime: string;
+  offDay: string;
+  mapUrl: string;
+  active: boolean;
+  sortOrder: number;
+};
+
+export type PhysicalStoreSetting = {
+  enabled: boolean;
+  title: string;
+  subtitle: string;
+  description: string;
+  buttonLabel: string;
+  buttonLink: string;
+  bannerUrl: string;
+  showCount: boolean;
+  countSuffix: string;
+  count: number;
+};
+
+export const physicalStoreApi = {
+  getAll: (params?: { active?: boolean }) =>
+    api.get<{ success: boolean; stores: PhysicalStore[] }>(
+      '/physical-stores',
+      {
+        params: params
+          ? { active: params.active ? 'true' : undefined }
+          : undefined,
+      }
+    ),
+
+  create: (data: PhysicalStoreForm) =>
+    api.post<{ success: boolean; store: PhysicalStore }>(
+      '/physical-stores',
+      data
+    ),
+
+  update: (id: string, data: Partial<PhysicalStoreForm>) =>
+    api.put<{ success: boolean; store: PhysicalStore }>(
+      `/physical-stores/${id}`,
+      data
+    ),
+
+  delete: (id: string) =>
+    api.delete<{ success: boolean; message: string }>(
+      `/physical-stores/${id}`
+    ),
+
+  reorder: (orders: { id: string; sortOrder: number }[]) =>
+    api.put<{ success: boolean; message: string }>(
+      '/physical-stores/reorder',
+      { orders }
+    ),
+};
+
+export const physicalStoreSettingApi = {
+  get: () =>
+    api.get<{ success: boolean; setting: PhysicalStoreSetting }>(
+      '/physical-stores/setting'
+    ),
+
+  update: (data: Partial<PhysicalStoreSetting>, banner?: File | null) => {
+    const fd = new FormData();
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined && value !== null) fd.append(key, String(value));
+    }
+    if (banner) fd.append('image', banner);
+    return api.put<{ success: boolean; setting: PhysicalStoreSetting }>(
+      '/physical-stores/setting',
+      fd
+    );
+  },
 };
 
 export type HomeContent = {
@@ -408,10 +546,16 @@ export type StoreSettings = {
   email: string;
   phone: string;
   description: string;
+  logoType: 'text' | 'image';
+  logoText: string;
+  logoSubText: string;
+  logoIconUrl: string;
   logoUrl: string;
   currency: string;
   timezone: string;
   address: string;
+  metaTitle?: string;
+  metaDescription?: string;
 };
 
 export const storeApi = {
@@ -717,6 +861,28 @@ export const orderApi = {
     note?: string;
     couponCode?: string;
   }) => api.post<{ success: boolean; order: Order }>('/orders', data),
+
+  adminCreate: (data: {
+    customerId: string;
+    items: { product: string; quantity: number }[];
+    shippingAddress: Order['shippingAddress'];
+    paymentMethod: string;
+    paymentStatus?: 'pending' | 'paid' | 'failed' | 'cancelled';
+    orderStatus?: OrderStatus;
+    note?: string;
+    couponCode?: string;
+    shippingFee?: number;
+  }) =>
+    api.post<{
+      success: boolean;
+      order: Order;
+      summary: {
+        subtotal: number;
+        shippingFee: number;
+        couponDiscount: number;
+        totalAmount: number;
+      };
+    }>('/orders/admin-create', data),
 };
 
 export type InvoiceStatus = 'paid' | 'pending' | 'overdue' | 'cancelled';
@@ -948,6 +1114,17 @@ export const productApi = {
 
   getPcParts: (params?: Record<string, string>) =>
     api.get<PcPartsResponse>('/products/pc-parts', { params }),
+
+  generateSku: (data: { name?: string; category?: string }) =>
+    api.post<{ success: boolean; sku: string; suffix: string }>(
+      '/products/generate-sku',
+      data
+    ),
+
+  generateProductCode: () =>
+    api.post<{ success: boolean; productCode: string }>(
+      '/products/generate-code'
+    ),
 };
 
 export type PcPartType =
@@ -1463,4 +1640,168 @@ export const notificationApi = {
 
   markAllRead: () =>
     api.post<{ success: boolean; message: string }>('/notifications/read-all'),
+};
+
+// ─── Staff & Access Management ────────────────────────────────────────────────
+
+export type ModulePermission = {
+  module: string;
+  view: boolean;
+  create: boolean;
+  edit: boolean;
+  delete: boolean;
+  manage: boolean;
+  export: boolean;
+};
+
+export type StaffMember = {
+  _id: string;
+  name: string;
+  email: string;
+  phone: string;
+  avatar: string;
+  role: 'super_admin' | 'admin' | 'manager';
+  active: boolean;
+  lastLogin?: string;
+  createdAt: string;
+  updatedAt: string;
+  permissionGroup?: {
+    _id: string;
+    name: string;
+    color: string;
+    description: string;
+  } | null;
+  customPermissions: ModulePermission[];
+};
+
+export type StaffStats = {
+  total: number;
+  active: number;
+  inactive: number;
+  byRole: { super_admin: number; admin: number; manager: number };
+};
+
+export type StaffAuditEntry = {
+  _id: string;
+  actor?: { id?: string; name?: string; role?: string };
+  action: string;
+  eventType: string;
+  target?: string;
+  changes?: Record<string, unknown> | null;
+  ip?: string;
+  createdAt: string;
+};
+
+export type StaffListResponse = {
+  success: boolean;
+  count: number;
+  total: number;
+  page: number;
+  pages: number;
+  members: StaffMember[];
+};
+
+export type StaffStatsResponse = {
+  success: boolean;
+  stats: StaffStats;
+  recentActivity: StaffAuditEntry[];
+};
+
+export type CreateStaffPayload = {
+  name: string;
+  email: string;
+  password: string;
+  phone?: string;
+  role: 'super_admin' | 'admin' | 'manager';
+  permissionGroup?: string | null;
+  customPermissions?: ModulePermission[];
+};
+
+export type UpdateStaffPayload = {
+  name?: string;
+  email?: string;
+  phone?: string;
+  password?: string;
+  role?: 'super_admin' | 'admin' | 'manager';
+  permissionGroup?: string | null;
+  customPermissions?: ModulePermission[];
+};
+
+export const staffApi = {
+  getStats: () => api.get<StaffStatsResponse>('/staff/stats'),
+
+  getAll: (params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    role?: string;
+    status?: string;
+  }) => api.get<StaffListResponse>('/staff', { params }),
+
+  getById: (id: string) =>
+    api.get<{ success: boolean; member: StaffMember; effectivePermissions: ModulePermission[] }>(
+      `/staff/${id}`
+    ),
+
+  create: (data: CreateStaffPayload) =>
+    api.post<{ success: boolean; member: StaffMember }>('/staff', data),
+
+  update: (id: string, data: UpdateStaffPayload) =>
+    api.put<{ success: boolean; member: StaffMember }>(`/staff/${id}`, data),
+
+  toggleStatus: (id: string) =>
+    api.patch<{ success: boolean; active: boolean; message: string }>(
+      `/staff/${id}/status`
+    ),
+
+  delete: (id: string) =>
+    api.delete<{ success: boolean; message: string }>(`/staff/${id}`),
+};
+
+// ─── Permission Groups ────────────────────────────────────────────────────────
+
+export type PermissionGroup = {
+  _id: string;
+  name: string;
+  description: string;
+  color: string;
+  permissions: ModulePermission[];
+  active: boolean;
+  usageCount?: number;
+  createdBy?: { id: string; name: string };
+  updatedBy?: { id: string; name: string };
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreatePermissionGroupPayload = {
+  name: string;
+  description?: string;
+  color?: string;
+  permissions: ModulePermission[];
+};
+
+export type UpdatePermissionGroupPayload = {
+  name?: string;
+  description?: string;
+  color?: string;
+  permissions?: ModulePermission[];
+  active?: boolean;
+};
+
+export const permissionGroupApi = {
+  getAll: () =>
+    api.get<{ success: boolean; groups: PermissionGroup[] }>('/permission-groups'),
+
+  getById: (id: string) =>
+    api.get<{ success: boolean; group: PermissionGroup }>(`/permission-groups/${id}`),
+
+  create: (data: CreatePermissionGroupPayload) =>
+    api.post<{ success: boolean; group: PermissionGroup }>('/permission-groups', data),
+
+  update: (id: string, data: UpdatePermissionGroupPayload) =>
+    api.put<{ success: boolean; group: PermissionGroup }>(`/permission-groups/${id}`, data),
+
+  delete: (id: string) =>
+    api.delete<{ success: boolean; message: string }>(`/permission-groups/${id}`),
 };

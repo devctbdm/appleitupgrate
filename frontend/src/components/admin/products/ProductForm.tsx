@@ -5,22 +5,20 @@ import {
   Star,
   Gift,
   Trash2,
-  Type as TypeIcon,
-  AlignLeft,
-  Image as ImageIcon,
-  Link as LinkIcon,
-  Bold,
-  Italic,
-  List,
-  ArrowUp,
-  ArrowDown,
   X,
+  Astroid,
+  Loader2,
 } from 'lucide-react';
+import { useState } from 'react';
+import { toast } from 'sonner';
+import { productApi } from '@/lib/api';
+import { useCurrency } from '@/hooks/useCurrency';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { RichTextEditor } from '@/components/RichTextEditor';
 import { ImageUploader } from '@/components/admin/products/ImageUploader';
 import { CategoryMultiSelect } from '@/components/admin/products/CategoryMultiSelect';
 import {
@@ -74,7 +72,7 @@ export type ProductFormValue = {
   keySpecs: KeySpec[];
   keyFeatures: KeyFeature[];
   specs: SpecGroup[];
-  content: ContentBlock[];
+  content: string;
   pcPart: PcPartFormValue;
 };
 
@@ -101,13 +99,68 @@ export const EMPTY_FORM_VALUE: ProductFormValue = {
   keySpecs: [],
   keyFeatures: [],
   specs: [],
-  content: [],
+  content: '',
   pcPart: { ...EMPTY_PC_PART },
 };
+
+// Convert legacy block-array content (old ContentEditor) into rich-text HTML so
+// it can be opened in the TipTap editor. HTML strings pass through untouched.
+export function contentToHtml(content: unknown): string {
+  if (!content) return '';
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  const escape = (s: unknown) =>
+    String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  return content
+    .map((block: any) => {
+      if (!block || typeof block !== 'object') return '';
+      switch (block.type) {
+        case 'title':
+          return `<h3>${escape(block.text)}</h3>`;
+        case 'text':
+          return `<p>${escape(block.text)}</p>`;
+        case 'image':
+          return block.url
+            ? `<img src="${escape(block.url)}" alt="${escape(block.alt || '')}" />`
+            : '';
+        case 'link':
+          return block.url
+            ? `<p><a href="${escape(block.url)}" target="_blank" rel="noreferrer">${escape(block.label || block.url)}</a></p>`
+            : '';
+        default:
+          return '';
+      }
+    })
+    .join('');
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 const uid = () => Math.random().toString(36).slice(2, 10);
+
+// Uppercase alphanumeric segments derived from free text.
+// Mirrors buildSkuBase() in backend/src/utils/sku.js so the client can rebuild
+// the SKU base live when the title changes.
+const toSkuSegments = (text: string, maxSegments: number) =>
+  String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, maxSegments)
+    .map((s) => s.slice(0, 8).toUpperCase());
+
+// Deterministic base for a SKU built from the product title + category.
+export function buildSkuBase(name: string, category?: string) {
+  const nameSegs = toSkuSegments(name, 2);
+  const catSegs = toSkuSegments(category || '', 1).map((s) => s.slice(0, 4));
+  return [...nameSegs, ...catSegs].filter(Boolean).join('-');
+}
 
 export function parseSpecifications(raw: any): {
   keySpecs: KeySpec[];
@@ -180,13 +233,66 @@ export function ProductForm({
   categories,
   imageFiles,
   onImageFilesChange,
+  enableAutoGenerate = false,
 }: {
   value: ProductFormValue;
   onChange: (v: Partial<ProductFormValue>) => void;
   categories: { _id: string; name: string; parentId: string | null }[];
   imageFiles: File[];
   onImageFilesChange: (files: File[]) => void;
+  enableAutoGenerate?: boolean;
 }) {
+  const [generatingSku, setGeneratingSku] = useState(false);
+  const [generatingCode, setGeneratingCode] = useState(false);
+  // Currency symbol from store settings (falls back to the config default).
+  const { symbol: currencySymbol } = useCurrency();
+  // Unique SKU suffix issued by the server (kept stable while the title changes).
+  const [skuSuffix, setSkuSuffix] = useState<string | null>(null);
+  // Once the admin edits the SKU by hand we stop auto-updating it.
+  const [skuTouched, setSkuTouched] = useState(false);
+
+  const primaryCategoryName =
+    categories.find((c) => c._id === value.categories[0])?.name || '';
+
+  const handleGenerateSku = async () => {
+    if (!value.name.trim()) {
+      toast.error('Enter the product name first');
+      return;
+    }
+    setGeneratingSku(true);
+    try {
+      const { data } = await productApi.generateSku({
+        name: value.name,
+        category: primaryCategoryName,
+      });
+      if (data.success) {
+        onChange({ sku: data.sku });
+        setSkuSuffix(data.suffix);
+        setSkuTouched(false);
+      }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Failed to generate SKU');
+    } finally {
+      setGeneratingSku(false);
+    }
+  };
+
+  const handleGenerateCode = async () => {
+    setGeneratingCode(true);
+    try {
+      const { data } = await productApi.generateProductCode();
+      if (data.success) {
+        onChange({ productCode: data.productCode });
+      }
+    } catch (err: any) {
+      toast.error(
+        err?.response?.data?.message || 'Failed to generate product code'
+      );
+    } finally {
+      setGeneratingCode(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-3">
@@ -194,22 +300,77 @@ export function ProductForm({
           <Label>Name</Label>
           <Input
             value={value.name}
-            onChange={(e) => onChange({ name: e.target.value })}
+            onChange={(e) => {
+              const name = e.target.value;
+              const patch: Partial<ProductFormValue> = { name };
+              // Keep the auto-generated SKU in sync with the title, but only
+              // while the admin hasn't edited the SKU by hand.
+              if (enableAutoGenerate && !skuTouched && skuSuffix) {
+                const base = buildSkuBase(name, primaryCategoryName);
+                patch.sku = base ? `${base}-${skuSuffix}` : skuSuffix;
+              }
+              onChange(patch);
+            }}
           />
         </div>
         <div className="space-y-1.5">
           <Label>SKU</Label>
-          <Input
-            value={value.sku}
-            onChange={(e) => onChange({ sku: e.target.value })}
-          />
+          <div className="flex items-center gap-2">
+            <Input
+              value={value.sku}
+              className="flex-1"
+              onChange={(e) => {
+                if (enableAutoGenerate) setSkuTouched(true);
+                onChange({ sku: e.target.value });
+              }}
+            />
+            {enableAutoGenerate && (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                title="Auto Generate"
+                onClick={handleGenerateSku}
+                disabled={generatingSku}
+                className="shrink-0"
+              >
+                {generatingSku ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Astroid className="h-4 w-4" />
+                )}
+                <span className="sr-only">Auto Generate</span>
+              </Button>
+            )}
+          </div>
         </div>
         <div className="space-y-1.5">
           <Label>Product Code</Label>
-          <Input
-            value={value.productCode}
-            onChange={(e) => onChange({ productCode: e.target.value })}
-          />
+          <div className="flex items-center gap-2">
+            <Input
+              value={value.productCode}
+              className="flex-1"
+              onChange={(e) => onChange({ productCode: e.target.value })}
+            />
+            {enableAutoGenerate && (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                title="Auto Generate"
+                onClick={handleGenerateCode}
+                disabled={generatingCode}
+                className="shrink-0"
+              >
+                {generatingCode ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Astroid className="h-4 w-4" />
+                )}
+                <span className="sr-only">Auto Generate</span>
+              </Button>
+            )}
+          </div>
         </div>
         <div className="space-y-1.5">
           <Label>Brand</Label>
@@ -224,7 +385,16 @@ export function ProductForm({
           <CategoryMultiSelect
             categories={categories}
             value={value.categories}
-            onChange={(v) => onChange({ categories: v })}
+            onChange={(v) => {
+              const patch: Partial<ProductFormValue> = { categories: v };
+              if (enableAutoGenerate && !skuTouched && skuSuffix) {
+                const catName =
+                  categories.find((c) => c._id === v[0])?.name || '';
+                const base = buildSkuBase(value.name, catName);
+                patch.sku = base ? `${base}-${skuSuffix}` : skuSuffix;
+              }
+              onChange(patch);
+            }}
           />
           <p className="text-xs text-muted-foreground">
             Select one or more categories. The first one is the primary
@@ -232,7 +402,7 @@ export function ProductForm({
           </p>
         </div>
         <div className="space-y-1.5">
-          <Label>Price ($)</Label>
+          <Label>Price ({currencySymbol})</Label>
           <Input
             type="number"
             min={0}
@@ -243,7 +413,7 @@ export function ProductForm({
           <p className="text-xs text-muted-foreground">What customers pay</p>
         </div>
         <div className="space-y-1.5">
-          <Label>Regular Price ($)</Label>
+          <Label>Regular Price ({currencySymbol})</Label>
           <Input
             type="number"
             min={0}
@@ -259,7 +429,7 @@ export function ProductForm({
           </p>
         </div>
         <div className="space-y-1.5">
-          <Label>Buy Price ($)</Label>
+          <Label>Buy Price ({currencySymbol})</Label>
           <Input
             type="number"
             min={0}
@@ -427,10 +597,22 @@ export function ProductForm({
         onChange={(pcPart) => onChange({ pcPart })}
       />
 
-      <ContentEditor
-        value={value.content}
-        onChange={(content) => onChange({ content })}
-      />
+      <div className="space-y-3">
+        <div>
+          <Label className="text-sm font-semibold">
+            Description (rich content)
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            Compose the product page with headings, text, images, lists and
+            links.
+          </p>
+        </div>
+        <RichTextEditor
+          value={value.content}
+          onChange={(content) => onChange({ content })}
+          placeholder="Write the product description…"
+        />
+      </div>
     </div>
   );
 }
@@ -446,6 +628,7 @@ function ProfitSummary({
   regularPrice: number;
   costPrice: number;
 }) {
+  const { format } = useCurrency();
   const profit = sellPrice - costPrice;
   const hasCost = costPrice > 0;
   const margin = hasCost && sellPrice > 0 ? (profit / sellPrice) * 100 : null;
@@ -468,17 +651,17 @@ function ProfitSummary({
             }`}
           >
             {profit > 0 ? '+' : ''}
-            ${profit.toFixed(2)}
+            {format(profit)}
           </div>
         </div>
         <div className="flex gap-4 text-xs">
           <div>
             <span className="text-muted-foreground">Buy: </span>
-            <span className="font-medium">${costPrice.toFixed(2)}</span>
+            <span className="font-medium">{format(costPrice)}</span>
           </div>
           <div>
             <span className="text-muted-foreground">Sell: </span>
-            <span className="font-medium">${sellPrice.toFixed(2)}</span>
+            <span className="font-medium">{format(sellPrice)}</span>
           </div>
           {margin !== null && (
             <div>
@@ -501,7 +684,7 @@ function ProfitSummary({
       ) : isLoss ? (
         <p className="mt-1 text-xs text-destructive">
           You&apos;re selling below your buy price — this item loses{' '}
-          ${Math.abs(profit).toFixed(2)} per unit.
+          {format(Math.abs(profit))} per unit.
         </p>
       ) : (
         <p className="mt-1 text-xs text-muted-foreground">
@@ -805,259 +988,6 @@ function SpecsEditor({
               >
                 <Plus /> Add field
               </Button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ContentEditor({
-  value,
-  onChange,
-}: {
-  value: ContentBlock[];
-  onChange: (v: ContentBlock[]) => void;
-}) {
-  function add(type: ContentBlock['type']) {
-    const base = { id: uid() };
-    const block: ContentBlock =
-      type === 'title'
-        ? { ...base, type: 'title', text: '' }
-        : type === 'text'
-          ? { ...base, type: 'text', text: '' }
-          : type === 'image'
-            ? { ...base, type: 'image', url: '', alt: '' }
-            : { ...base, type: 'link', label: '', url: '' };
-    onChange([...value, block]);
-  }
-  function update(id: string, patch: Partial<ContentBlock>) {
-    onChange(
-      value.map((b) =>
-        b.id === id ? ({ ...b, ...patch } as ContentBlock) : b
-      )
-    );
-  }
-  function remove(id: string) {
-    onChange(value.filter((b) => b.id !== id));
-  }
-  function move(id: string, dir: -1 | 1) {
-    const idx = value.findIndex((b) => b.id === id);
-    const j = idx + dir;
-    if (idx < 0 || j < 0 || j >= value.length) return;
-    const next = [...value];
-    [next[idx], next[j]] = [next[j], next[idx]];
-    onChange(next);
-  }
-  function applyInlineFormat(id: string, wrap: '**' | '*' | '- ') {
-    const b = value.find((x) => x.id === id);
-    if (!b || (b.type !== 'text' && b.type !== 'title')) return;
-    if (wrap === '- ') {
-      update(id, { text: (b.text ? b.text + '\n' : '') + '- ' });
-    } else {
-      update(id, { text: `${b.text}${wrap}text${wrap}` });
-    }
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <Label className="text-sm font-semibold">
-            Description (rich content)
-          </Label>
-          <p className="text-xs text-muted-foreground">
-            Compose the product page with blocks: title, description, image,
-            and link.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => add('title')}
-          >
-            <TypeIcon /> Title
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => add('text')}
-          >
-            <AlignLeft /> Text
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => add('image')}
-          >
-            <ImageIcon /> Image
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => add('link')}
-          >
-            <LinkIcon /> Link
-          </Button>
-        </div>
-      </div>
-
-      {value.length === 0 && (
-        <p className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
-          No content blocks yet. Add a title, text, image, or link.
-        </p>
-      )}
-
-      <div className="space-y-2">
-        {value.map((b, i) => (
-          <div key={b.id} className="rounded-md border">
-            <div className="flex items-center justify-between gap-2 border-b bg-muted/40 px-2 py-1.5">
-              <div className="flex items-center gap-1.5 text-xs font-medium capitalize text-muted-foreground">
-                {b.type === 'title' && (
-                  <TypeIcon className="h-3.5 w-3.5" />
-                )}
-                {b.type === 'text' && (
-                  <AlignLeft className="h-3.5 w-3.5" />
-                )}
-                {b.type === 'image' && (
-                  <ImageIcon className="h-3.5 w-3.5" />
-                )}
-                {b.type === 'link' && (
-                  <LinkIcon className="h-3.5 w-3.5" />
-                )}
-                {b.type}
-              </div>
-              <div className="flex items-center gap-0.5">
-                {(b.type === 'text' || b.type === 'title') && (
-                  <>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => applyInlineFormat(b.id, '**')}
-                      aria-label="Bold"
-                    >
-                      <Bold className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => applyInlineFormat(b.id, '*')}
-                      aria-label="Italic"
-                    >
-                      <Italic className="h-3.5 w-3.5" />
-                    </Button>
-                    {b.type === 'text' && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => applyInlineFormat(b.id, '- ')}
-                        aria-label="List"
-                      >
-                        <List className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </>
-                )}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => move(b.id, -1)}
-                  disabled={i === 0}
-                  aria-label="Move up"
-                >
-                  <ArrowUp className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => move(b.id, 1)}
-                  disabled={i === value.length - 1}
-                  aria-label="Move down"
-                >
-                  <ArrowDown className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-destructive"
-                  onClick={() => remove(b.id)}
-                  aria-label="Delete block"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-            <div className="p-3">
-              {b.type === 'title' && (
-                <Input
-                  value={b.text}
-                  onChange={(e) => update(b.id, { text: e.target.value })}
-                  placeholder="Section title"
-                  className="text-base font-semibold"
-                />
-              )}
-              {b.type === 'text' && (
-                <Textarea
-                  rows={3}
-                  value={b.text}
-                  onChange={(e) => update(b.id, { text: e.target.value })}
-                  placeholder="Write a paragraph. Use **bold**, *italic*, or - list items."
-                />
-              )}
-              {b.type === 'image' && (
-                <div className="space-y-2">
-                  <Input
-                    value={b.url}
-                    onChange={(e) => update(b.id, { url: e.target.value })}
-                    placeholder="Image URL (https://...)"
-                  />
-                  <Input
-                    value={b.alt}
-                    onChange={(e) => update(b.id, { alt: e.target.value })}
-                    placeholder="Alt text"
-                  />
-                  {b.url && (
-                    <img
-                      src={b.url}
-                      alt={b.alt}
-                      className="max-h-40 rounded-md border object-contain"
-                    />
-                  )}
-                </div>
-              )}
-              {b.type === 'link' && (
-                <div className="grid grid-cols-2 gap-2">
-                  <Input
-                    value={b.label}
-                    onChange={(e) =>
-                      update(b.id, { label: e.target.value })
-                    }
-                    placeholder="Link label"
-                  />
-                  <Input
-                    value={b.url}
-                    onChange={(e) => update(b.id, { url: e.target.value })}
-                    placeholder="https://..."
-                  />
-                </div>
-              )}
             </div>
           </div>
         ))}

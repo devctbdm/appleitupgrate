@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/sidebar';
 import { notificationApi } from '@/lib/api';
 import { getSocket } from '@/lib/socket';
+import { useStoreLogo } from '@/hooks/useStoreLogo';
 import { useAuth } from '@/store';
 import {
   BellCheck,
@@ -34,13 +35,6 @@ import {
 
 // This is sample data.
 const data = {
-  teams: [
-    {
-      name: 'Apple IT Zone',
-      logo: AppleLogo,
-      plan: 'IT Zone',
-    },
-  ],
   navMain: [
     {
       title: 'Dashboard',
@@ -63,6 +57,10 @@ const data = {
         {
           title: 'Home Slide Text',
           url: '/admin/homeslidertext',
+        },
+        {
+          title: 'Physical Stores',
+          url: '/admin/physical-stores',
         },
       ],
     },
@@ -105,6 +103,10 @@ const data = {
         {
           title: 'All Orders',
           url: '/admin/orders',
+        },
+        {
+          title: 'New Order',
+          url: '/admin/orders/new',
         },
       ],
     },
@@ -189,17 +191,13 @@ const data = {
       icon: <BellCheck />,
     },
     {
-      title: 'administrator',
+      title: 'Administrator',
       url: '#',
       icon: <ShieldAlert />,
       items: [
         {
-          title: 'Admin Users',
-          url: '/admin/admin-users',
-        },
-        {
-          title: 'Admin Roles',
-          url: '/admin/admin-roles',
+          title: 'administrator',
+          url: '/admin/administrator',
         },
       ],
     },
@@ -241,7 +239,21 @@ const data = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { user } = useAuth();
+  const logo = useStoreLogo();
   const [unread, setUnread] = useState(0);
+
+  // Sidebar brand mirrors the dynamic store logo (Settings → Logo): either the
+  // uploaded logo image, or the icon + text + sub text combination.
+  const teams = [
+    {
+      name: logo.logoText || logo.storeName || 'Apple IT Zone',
+      logo:
+        logo.logoType === 'image' && logo.logoUrl
+          ? logo.logoUrl
+          : logo.logoIconUrl || AppleLogo,
+      plan: logo.logoSubText || 'IT Zone',
+    },
+  ];
   const sidebarUser = {
     name: user?.name || 'Guest',
     email: user?.email || 'Not signed in',
@@ -284,7 +296,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <TeamSwitcher teams={data.teams} />
+        <TeamSwitcher teams={teams} />
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navMain} />

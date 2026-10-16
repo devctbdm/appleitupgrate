@@ -129,8 +129,10 @@ const productSchema = new mongoose.Schema(
       default: {},
     },
     content: {
-      type: [mongoose.Schema.Types.Mixed], // Rich content blocks (title, text, image, link)
-      default: [],
+      // Rich content: HTML string (rich-text editor) or a legacy array of
+      // { type: title | text | image | link } blocks.
+      type: mongoose.Schema.Types.Mixed,
+      default: '',
     },
     seo: {
       metaTitle: { type: String, trim: true },
@@ -194,6 +196,19 @@ productSchema.methods.calculateAverageRating = function () {
 // ---- Indexes for faster queries ----
 productSchema.index({ category: 1, price: 1 });
 productSchema.index({ name: 'text', description: 'text' }); // Full-text search
+productSchema.index({ sku: 1 }); // Fast uniqueness check when auto-generating SKUs
+
+// Product codes must be unique. A partial index so products without a code are
+// unaffected, and empty values never collide with each other.
+productSchema.index(
+  { productCode: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      productCode: { $exists: true, $type: 'string', $gt: '' },
+    },
+  }
+);
 
 const Product = mongoose.model('Product', productSchema);
 export default Product;

@@ -103,6 +103,49 @@ export function sanitizeNumericInput(input: string): number {
 }
 
 /**
+ * Resolve the display symbol for an ISO currency code.
+ * (e.g. 'USD' -> '$', 'BDT' -> '৳'). Falls back to the uppercased code.
+ */
+export function getCurrencySymbol(
+  currencyCode: string = 'BDT',
+  locale: string = 'en-US'
+): string {
+  const code = (currencyCode || 'BDT').toUpperCase();
+  try {
+    const parts = new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency: code,
+      currencyDisplay: 'narrowSymbol',
+    }).formatToParts(0);
+    return parts.find((p) => p.type === 'currency')?.value || code;
+  } catch {
+    return code;
+  }
+}
+
+/**
+ * Format an amount using a currency code from the store settings.
+ * (e.g. formatMoney(1250.5, 'USD') -> '$1,250.50')
+ */
+export function formatMoney(
+  amount: number,
+  currencyCode: string = 'BDT',
+  locale: string = 'en-US'
+): string {
+  const code = (currencyCode || 'BDT').toUpperCase();
+  const value = Number(amount) || 0;
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency: code,
+      currencyDisplay: 'narrowSymbol',
+    }).format(value);
+  } catch {
+    return `${code} ${value.toFixed(2)}`;
+  }
+}
+
+/**
  * Shortcut for formatBDT with TK symbol (useful for admin panels or specific contexts)
  */
 export const formatBDT_TK = (amount: number) =>

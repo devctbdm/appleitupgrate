@@ -18,7 +18,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useAuth, useCart } from '@/store';
 import Link from 'next/link';
-import api from '@/lib/axios';
+import api from '@/lib/http';
 
 const registerSchema = z
   .object({

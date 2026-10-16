@@ -6,6 +6,8 @@ import {
   updateHomeSliderText,
   deleteHomeSliderText,
   reorderHomeSliderTexts,
+  getHomeSliderSettingStatus,
+  updateHomeSliderSettingStatus,
 } from '../controllers/homeSliderTextController.js';
 import { protect, adminOnly } from '../middleware/auth.js';
 
@@ -13,11 +15,13 @@ const router = express.Router();
 
 // ---- Public routes (storefront) ----
 router.get('/', getAllHomeSliderTexts);
+router.get('/setting', getHomeSliderSettingStatus);
 router.get('/:id', getHomeSliderTextById);
 
 // ---- Admin-only routes ----
 router.post('/', protect, adminOnly, createHomeSliderText);
 router.put('/reorder', protect, adminOnly, reorderHomeSliderTexts);
+router.put('/setting', protect, adminOnly, updateHomeSliderSettingStatus);
 router.put('/:id', protect, adminOnly, updateHomeSliderText);
 router.delete('/:id', protect, adminOnly, deleteHomeSliderText);
 

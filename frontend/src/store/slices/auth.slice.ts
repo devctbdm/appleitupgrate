@@ -1,7 +1,7 @@
 // src/store/slices/auth.slice.ts
 import { StateCreator } from 'zustand';
 import { User, LoginCredentials, RegisterCredentials } from '@/types/user';
-import api from '@/lib/axios';
+import api from '@/lib/http';
 
 export interface AuthSlice {
   user: User | null;

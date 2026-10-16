@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Order from "../models/Order.js";
 import Product from "../models/Product.js";
 import PromoCode from "../models/PromoCode.js";
+import User from "../models/User.js";
 import { expandPromoCategories } from "../utils/categoryTree.js";
 import { getNextOrderNumber } from "../utils/orderNumber.js";
 import { notifyOrderStatusChange } from "../services/smsService.js";
@@ -505,6 +506,251 @@ export const updateAdvance = async (req, res) => {
 
     res.json({ success: true, order });
   } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Create an order on behalf of a customer (Admin/Manager only)
+//          Never trusts client-submitted prices or totals — all prices are
+//          re-fetched from the database before writing the order.
+// @route   POST /api/orders/admin-create
+// @access  Private/Admin
+export const adminCreateOrder = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const {
+      customerId,
+      items,
+      shippingAddress,
+      paymentMethod,
+      paymentStatus,
+      orderStatus,
+      note,
+      couponCode,
+      shippingFee = 0,
+    } = req.body;
+
+    // ── 1. Validate customer ────────────────────────────────────────────────
+    if (!customerId) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ success: false, message: "Customer is required" });
+    }
+    const customer = await User.findById(customerId).session(session);
+    if (!customer || customer.role !== "customer") {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({ success: false, message: "Customer not found" });
+    }
+
+    // ── 2. Validate items ───────────────────────────────────────────────────
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ success: false, message: "No items in order" });
+    }
+
+    // ── 3. Validate shipping address ────────────────────────────────────────
+    const addr = shippingAddress || {};
+    if (!addr.street || !addr.city || !addr.state || !addr.postcode) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ success: false, message: "Shipping address (street, city, state, postcode) is required" });
+    }
+
+    // ── 4. Fetch products, validate stock, build order items ────────────────
+    let subtotal = 0;
+    const orderItems = [];
+    const promoItems = [];
+
+    for (const item of items) {
+      if (!item.product || !item.quantity || item.quantity < 1) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({ success: false, message: "Each item must have a product ID and quantity ≥ 1" });
+      }
+
+      const product = await Product.findById(item.product)
+        .populate("category")
+        .session(session);
+
+      if (!product) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(404).json({ success: false, message: `Product not found: ${item.product}` });
+      }
+      if (product.status !== "active") {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({ success: false, message: `Product "${product.name}" is not available` });
+      }
+      if (product.stock < item.quantity) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          success: false,
+          message: `Insufficient stock for "${product.name}" — available: ${product.stock}, requested: ${item.quantity}`,
+        });
+      }
+
+      // Server-authoritative price (ignore any client-submitted price)
+      const price = product.discountPrice > 0 ? product.discountPrice : product.price;
+      subtotal += price * item.quantity;
+
+      // Deduct stock inside the transaction
+      product.stock -= item.quantity;
+      await product.save({ session });
+
+      orderItems.push({
+        product: product._id,
+        name: product.name,
+        quantity: item.quantity,
+        price,
+        image: product.images[0] || "",
+      });
+
+      promoItems.push({
+        categories:
+          Array.isArray(product.categories) && product.categories.length
+            ? product.categories
+            : product.category &&
+                typeof product.category === "object" &&
+                product.category.name
+              ? [product.category.name]
+              : [],
+        price,
+        quantity: item.quantity,
+      });
+    }
+
+    // ── 5. Apply coupon (category-aware, server-validated) ──────────────────
+    let couponDiscount = 0;
+    let appliedPromo = null;
+    if (couponCode && couponCode.trim()) {
+      const promo = await PromoCode.findOne({ code: couponCode.trim().toUpperCase() }).session(session);
+      if (promo) {
+        const expanded = await expandPromoCategories(promo.categories || []);
+        const result = promo.computeItemDiscount(promoItems, subtotal, expanded);
+        if (result.valid) {
+          couponDiscount = result.discount;
+          appliedPromo = promo;
+        }
+      }
+    }
+
+    // ── 6. Calculate total ──────────────────────────────────────────────────
+    const shipping = Math.max(0, Number(shippingFee) || 0);
+    const totalAmount = Math.max(0, subtotal - couponDiscount + shipping);
+
+    // ── 7. Validate payment method ──────────────────────────────────────────
+    const validPaymentMethods = ["cod", "bkash", "nagad", "sslcommerz", "bank_transfer", "cash"];
+    const method = paymentMethod || "cod";
+    if (!validPaymentMethods.includes(method)) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ success: false, message: `Invalid payment method: ${method}` });
+    }
+
+    // ── 8. Validate order status ────────────────────────────────────────────
+    const validOrderStatuses = ["pending", "processing", "confirmed", "send_courier", "cancelled"];
+    const initStatus = orderStatus || "pending";
+    if (!validOrderStatuses.includes(initStatus)) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ success: false, message: `Invalid order status: ${initStatus}` });
+    }
+
+    // ── 9. Validate payment status ──────────────────────────────────────────
+    const validPaymentStatuses = ["pending", "paid", "failed", "cancelled"];
+    const initPaymentStatus = (paymentStatus || "pending").toLowerCase();
+    if (!validPaymentStatuses.includes(initPaymentStatus)) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ success: false, message: `Invalid payment status: ${initPaymentStatus}` });
+    }
+
+    // ── 10. Create the order ────────────────────────────────────────────────
+    const orderNumber = await getNextOrderNumber();
+    const order = new Order({
+      user: customer._id,
+      items: orderItems,
+      shippingAddress: {
+        fullName: addr.fullName || customer.name || "",
+        phone: addr.phone || customer.phone || "",
+        street: addr.street,
+        city: addr.city,
+        state: addr.state,
+        postcode: addr.postcode,
+        country: addr.country || "Bangladesh",
+      },
+      totalAmount,
+      coupon: appliedPromo
+        ? { code: appliedPromo.code, discount: couponDiscount }
+        : undefined,
+      payment: {
+        method,
+        status: initPaymentStatus,
+        paidAt: initPaymentStatus === "paid" ? new Date() : undefined,
+      },
+      orderStatus: initStatus,
+      note: (note || "").trim().slice(0, 500),
+      orderNumber,
+    });
+
+    await order.save({ session });
+
+    // ── 11. Increment promo usage ────────────────────────────────────────────
+    if (appliedPromo) {
+      appliedPromo.usageCount += 1;
+      await appliedPromo.save({ session });
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    // ── 12. Side-effects (fire-and-forget, outside transaction) ─────────────
+    if (customer.phone) {
+      notifyOrderStatusChange({
+        order,
+        status: initStatus,
+        name: customer.name || "Customer",
+        phone: customer.phone,
+      }).catch(() => {});
+    }
+    if (customer.email) {
+      notifyOrderConfirmation({
+        order,
+        name: customer.name || "Customer",
+        email: customer.email,
+      }).catch(() => {});
+    }
+
+    await createNotification({
+      category: "order",
+      title: "New order created by staff",
+      description: `Order ${order.orderNumber} created for ${customer.name} by ${req.user.name || "admin"} for ৳${totalAmount}.`,
+      link: `/admin/orders/${order._id}`,
+      order: order._id,
+    });
+
+    // Populate user for the response
+    await order.populate("user", "name email phone");
+
+    res.status(201).json({
+      success: true,
+      order,
+      summary: {
+        subtotal,
+        shippingFee: shipping,
+        couponDiscount,
+        totalAmount,
+      },
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error("Admin Create Order Error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

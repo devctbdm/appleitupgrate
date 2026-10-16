@@ -1,6 +1,7 @@
 // backend/src/controllers/homeSliderTextController.js
 
 import HomeSliderText from '../models/HomeSliderText.js';
+import { getHomeSliderSetting } from '../models/HomeSliderSetting.js';
 
 // @desc    Get all home slider texts (active first for storefront, admin sees all)
 // @route   GET /api/home-slider-texts
@@ -108,6 +109,36 @@ export const reorderHomeSliderTexts = async (req, res) => {
     }
 
     res.json({ success: true, message: 'Texts reordered' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Get the home slider text visibility setting
+// @route   GET /api/home-slider-texts/setting
+// @access  Public
+export const getHomeSliderSettingStatus = async (req, res) => {
+  try {
+    const setting = await getHomeSliderSetting();
+    res.json({ success: true, setting: { enabled: setting.enabled } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Update the home slider text visibility setting
+// @route   PUT /api/home-slider-texts/setting
+// @access  Private/Admin
+export const updateHomeSliderSettingStatus = async (req, res) => {
+  try {
+    const setting = await getHomeSliderSetting();
+
+    if (typeof req.body.enabled === 'boolean') {
+      setting.enabled = req.body.enabled;
+    }
+
+    await setting.save();
+    res.json({ success: true, setting: { enabled: setting.enabled } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

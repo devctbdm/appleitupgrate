@@ -1,6 +1,8 @@
 import express from 'express';
 import {
   createProduct,
+  generateProductCode,
+  generateSku,
   getAllProducts,
   getProductById,
   getProductBySlug,
@@ -21,6 +23,10 @@ router.get('/category/:category', getProductsByCategory);
 router.get('/slug/:slug', getProductBySlug);
 router.get('/pc-parts', getPcParts);
 router.get('/:id', getProductById);
+
+// ---- Admin-only id generators (used by the "Auto Generate" buttons) ----
+router.post('/generate-code', protect, adminOnly, generateProductCode);
+router.post('/generate-sku', protect, adminOnly, generateSku);
 
 // ---- Authenticated user routes ----
 router.post('/:id/ratings', protect, addRating);

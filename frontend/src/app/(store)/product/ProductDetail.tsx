@@ -5,6 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { productApi, questionApi } from '@/lib/api';
 import type { Product } from '@/types/product';
+import { RichTextView } from '@/components/RichTextView';
 import { useAuth } from '@/hooks/useAuth';
 import { Breadcrumb } from '@/components/store/layout/Breadcrumb';
 import { ProductShareBar } from '@/components/store/product/ProductShareBar';
@@ -664,7 +665,15 @@ export default function ProductDetail({
               <p className="text-gray-600 leading-relaxed">
                 {product.description || 'No description available.'}
               </p>
-              {renderContentBlocks(product.content || [], product.name)}
+              {typeof product.content === 'string' &&
+              product.content.trim() ? (
+                <RichTextView html={product.content} className="mt-4" />
+              ) : (
+                renderContentBlocks(
+                  Array.isArray(product.content) ? product.content : [],
+                  product.name
+                )
+              )}
             </TabsContent>
 
             <TabsContent value="questions" className="pt-4">

@@ -1,19 +1,20 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import {
+  EMPTY_FORM_VALUE,
+  ProductForm,
+  ProductFormValue,
+  contentToHtml,
+  parseSpecifications,
+} from '@/components/admin/products/ProductForm';
+import { SiteHeader } from '@/components/site-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { toast } from 'sonner';
 import { categoryApi, productApi } from '@/lib/api';
-import { SiteHeader } from '@/components/site-header';
-import {
-  ProductForm,
-  parseSpecifications,
-  EMPTY_FORM_VALUE,
-  ProductFormValue,
-} from '@/components/admin/products/ProductForm';
+import { ArrowLeft, Loader2 } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 
 export default function EditsProductsPage() {
   const router = useRouter();
@@ -52,17 +53,7 @@ export default function EditsProductsPage() {
         if (data.success) {
           const p = data.product;
           const parsed = parseSpecifications(p.specifications || {});
-          const existingContent: any[] = p.content
-            ? typeof p.content === 'string'
-              ? (() => {
-                  try {
-                    return JSON.parse(p.content);
-                  } catch {
-                    return [];
-                  }
-                })()
-              : p.content
-            : [];
+          const existingContent = contentToHtml(p.content);
           setForm({
             name: p.name || '',
             sku: p.sku || '',
@@ -191,8 +182,7 @@ export default function EditsProductsPage() {
         });
       });
       fd.append('specifications', JSON.stringify(specs));
-      if (form.content.length > 0)
-        fd.append('content', JSON.stringify(form.content));
+      fd.append('content', form.content ?? '');
       fd.append('pcPart', JSON.stringify(form.pcPart));
 
       imageFiles.forEach((file) => fd.append('images', file));

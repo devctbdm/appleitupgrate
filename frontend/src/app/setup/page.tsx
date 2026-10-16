@@ -6,7 +6,6 @@ import { toast } from 'sonner';
 import { CheckCircle2, Eye, EyeOff, Loader2, ShieldCheck } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import axios from 'axios';
 
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
@@ -19,7 +18,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAppStore } from '@/store';
-import api from '@/lib/axios';
+import api, { ApiError } from '@/lib/http';
 
 const setupSchema = z
   .object({
@@ -129,15 +128,15 @@ export default function SetupPage() {
       router.push('/admin/dashboard');
     } catch (err) {
       const message =
-        axios.isAxiosError(err)
-          ? err.response?.data?.message || err.message
+        err instanceof ApiError
+          ? err.message
           : err instanceof Error
             ? err.message
             : 'Something went wrong';
 
       // 409 can mean "already set up" (someone beat us to it) or
       // "email taken" — re-check and show the right screen.
-      if (axios.isAxiosError(err) && err.response?.status === 409) {
+      if (err instanceof ApiError && err.status === 409) {
         const res = await api
           .get<{ setupRequired: boolean }>('/setup/status')
           .catch(() => null);

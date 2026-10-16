@@ -1,9 +1,8 @@
 import { io, type Socket } from 'socket.io-client';
+import { API_ROOT } from './apiConfig';
 
-// Derive the Socket.io origin from the API base URL (strip the /api suffix).
-const SOCKET_URL = (
-  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/'
-).replace(/\/api\/?$/, '');
+// Socket.io connects to the API origin (the root URL, without the /api suffix).
+const SOCKET_URL = API_ROOT;
 
 let socket: Socket | null = null;
 
